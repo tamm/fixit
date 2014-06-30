@@ -368,7 +368,7 @@ if($status[1]){
 ?>
 
   <div id="footer">
-    &copy; 2011 Tamm Sjödin, <a href="http://nindev.se">Nindev AB</a> | 
+    Created 2011 by Tamm Sjödin @ Nindev AB | 
   <?php 
   $mtime = explode(" ", microtime()); $endtime = $mtime[1] + $mtime[0]; $totaltime = ($endtime - $starttime);
   //print the time taken to execute the script
