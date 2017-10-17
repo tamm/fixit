@@ -1,18 +1,15 @@
 <?php
 /*
- *  fixit.php was created to move WordPress between domains or directories
+ *  fixit.php was created to move WordPress between domains or directories, it also works to make general search and replace in a wordpress installation
  *  Author: Tamm Sjödin
  *  Created: February 2011
- *  Latest update: December 1st 2011
- *  Version: 1.0
+ *  Latest update: October 2017
+ *  Version: 1.1
 */
-
 
 //Start timer to check script performance
 $mtime = explode(' ', microtime());
 $starttime = $mtime[1] + $mtime[0];
-
-$status=array();
 
 //Ignore errors due to funcionality loaded in the wp-config.php -> wp-settings.php related to magic quotes
 error_reporting("E_ALL & ~E_DEPRECATED");
@@ -31,6 +28,7 @@ define( 'ABSPATH', dirname(__FILE__) . '/' );
       font-family: sans-serif;
       margin: 0;
     }
+
     #wrapper {
       width: 500px;
       margin: 60px auto;
@@ -40,25 +38,56 @@ define( 'ABSPATH', dirname(__FILE__) . '/' );
       -moz-border-radius: 10px;
       border-radius: 10px;
     }
+
     #wrapper p {
       text-align: center;
     }
+
     #wrapper form table {
       margin: 0 auto;
     }
+
     #footer {
       font-size: 0.7em;
       color: #999;
       text-align: center;
     }
+
+    .form {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .form .row {
+      display: flex;
+      flex-direction: row;
+      justify-content: right;
+      align-items: center;
+      margin-bottom: 1em;
+    }
+
+    .input-wrap {
+      flex-grow: 1;
+    }
+
     p.error{
       color: #f00;
     }
+
     ul.status {
       text-align: center;
       padding: 0;
     }
+
     ul.status li{
+      position: relative;
+      list-style: none;
+      vertical-align: middle;
+      margin: 5px;
+    }
+
+    ul.status li .lamp{
       display: inline-block;
       position: relative;
       list-style: none;
@@ -70,74 +99,66 @@ define( 'ABSPATH', dirname(__FILE__) . '/' );
       text-align: center;
       vertical-align: middle;
       margin: 0 5px;
-      -moz-box-shadow: 0px 2px 2px rgba(0,0,0,0.2); /* FF3.5+ */
-      -webkit-box-shadow: 0px 2px 2px rgba(0,0,0,0.2); /* Saf3.0+, Chrome */
-      box-shadow: 0px 2px 2px rgba(0,0,0,0.2); /* Opera 10.5, IE 9.0 */
     }
+
     ul.status li span{
       display: inline-block;
-      padding: 0.25em 0;
+      vertical-align: middle;
+    }
+
+    ul.status li .lamp span{
+      display: inline-block;
+      line-height: 20px;
       font-weight: bold;
-      text-shadow: -0px -1px rgba(0,0,0,0.2);
     }
-    li.green{
-      background-color: #00ee00;
-      background-image: -moz-linear-gradient(top, #00ee00, #00aa00); /* FF3.6 */
-      background-image: -webkit-gradient(linear,left top,left bottom,color-stop(0, #00ee00),color-stop(1, #00aa00)); /* Saf4+, Chrome */
-      filter:  progid:DXImageTransform.Microsoft.gradient(startColorstr='#00ee00', endColorstr='#00aa00'); /* IE6,IE7 */
-      -ms-filter: "progid:DXImageTransform.Microsoft.gradient(startColorstr='#00ee00', endColorstr='#00aa00')"; /* IE8 */
+
+    .lamp.green{
+      background-color: #00aa00;
       color: #fff;
     }
-    li.red{
+
+    .lamp.red{
       background-color: #ff0000;
-      background-image: -moz-linear-gradient(top, #ff6666, #bb0000); /* FF3.6 */
-      background-image: -webkit-gradient(linear,left top,left bottom,color-stop(0, #ff6666),color-stop(1, #bb0000)); /* Saf4+, Chrome */
-      filter:  progid:DXImageTransform.Microsoft.gradient(startColorstr='#ff6666', endColorstr='#bb0000'); /* IE6,IE7 */
-      -ms-filter: "progid:DXImageTransform.Microsoft.gradient(startColorstr='#ff6666', endColorstr='#bb0000')"; /* IE8 */
       color: #fff;
     }
+
     a:link, a:visited {
       color: #04bbf2;
     }
-    
+
     #submit{
       background-color: #04baf0;
-      background-image: -moz-linear-gradient(top, #02aee7, #0088b6); /* FF3.6 */
-      background-image: -webkit-gradient(linear,left top,left bottom,color-stop(0, #02aee7),color-stop(1, #0088b6)); /* Saf4+, Chrome */
-      filter:  progid:DXImageTransform.Microsoft.gradient(startColorstr='#02aee7', endColorstr='#0088b6'); /* IE6,IE7 */
-      -ms-filter: "progid:DXImageTransform.Microsoft.gradient(startColorstr='#02aee7', endColorstr='#0088b6')"; /* IE8 */
       color: #fff;
-      border: 1px solid #06c7ee;
-      -moz-box-shadow: 0px 0px 0px 1px #0088b0; /* FF3.5+ */
-      -webkit-box-shadow: 0px 0px 0px 1px #0088b0; /* Saf3.0+, Chrome */
-      box-shadow: 0px 0px 0px 1px #0088b0; /* Opera 10.5, IE 9.0 */
-      -moz-border-radius: 4px; /* FF1+ */
-      -webkit-border-radius: 4px; /* Saf3+, Chrome */
-      border-radius: 4px; /* Opera 10.5, IE 9 */
-      width: 70%;
+      width: 100%;
       margin: 0 auto;
       display: block;
       height: 36px;
       font-weight: bold;
       font-size: 16px;
       font-family: 'Helvetica Neue',Helvetica,sans-serif;
+      border: none;
+      box-shadow: inset 0 -4px 0 rgba(0,0,0,0.3);
     }
+
     input[type=text]{
-      border: 1px solid #d9d9d9;
-      background: #f6f6f6;
-      -moz-border-radius: 3px; /* FF1+ */
-      -webkit-border-radius: 3px; /* Saf3+, Chrome */
-      border-radius: 3px; /* Opera 10.5, IE 9 */
-      padding: 0.3em;
+      font-size: 16px;
+      border: none;
+      background: #eaeaea;
+      padding: 0.5em 0.3em;
+      width: 100%;
     }
+
     #results{
       margin: 0 auto;
     }
+
     .title{
       color: #777;
       text-align: right;
       font-size: 0.8em;
+      padding-right: 0.5em;
     }
+
     .number{
       width: 60px;
     }
@@ -146,24 +167,48 @@ define( 'ABSPATH', dirname(__FILE__) . '/' );
 <body>
 <div id="wrapper">
 <?php
+
+/**
+* status
+*/
+class Status
+{
+  public $colour;
+  public $message;
+
+  function __construct($colour, $message = '')
+  {
+    $this->colour = $colour;
+    $this->message = $message;
+  }
+}
+
+$statuses = array();
+
+function AddStatus($colour, $message = '')
+{
+  global $statuses;
+  array_push($statuses, new Status($colour, $message));
+}
+
 //load the wp-config.php, this was stolen from wp-load.php and modified for reporting success/error
 if ( file_exists( ABSPATH . 'wp-config.php') ) {
-	/** The config file resides in ABSPATH */
-	require_once( ABSPATH . 'wp-config.php' );
-  $status[1]='green';
+  /** The config file resides in ABSPATH */
+  require_once( ABSPATH . 'wp-config.php' );
+  AddStatus('green', 'Loaded the wp-config.php');
 } elseif ( file_exists( dirname(ABSPATH) . '/wp-config.php' ) && ! file_exists( dirname(ABSPATH) . '/wp-settings.php' ) ) {
-	/** The config file resides one level above ABSPATH but is not part of another install*/
-	require_once( dirname(ABSPATH) . '/wp-config.php' );
-  $status[1]='green';
+  /** The config file resides one level above ABSPATH but is not part of another install*/
+  require_once( dirname(ABSPATH) . '/wp-config.php' );
+  AddStatus('green', 'Loaded the wp-config.php');
 } else {
   echo "<p class='error'><strong>wp-config.php</strong> failed to load</p>";
-  $status[1]='red';
+  AddStatus('red', '<strong>wp-config.php</strong> failed to load');
 }
 
 //connect to database using the variables defined in wp-config.php
 mysql_connect(DB_HOST,DB_USER,DB_PASSWORD);
 @mysql_select_db(DB_NAME) or die( "Unable to select database");
-$status[2]='green';
+AddStatus('green', 'Database select successful');
 
 //get the variables from the form for search and replace
 $searchanddestroy = array(mysql_real_escape_string($_POST['search']),mysql_real_escape_string($_POST['replace']));
@@ -181,48 +226,39 @@ if($defaults['search'] == ""){//usually we're replacing the string currently sto
   $search_table=$optionstables[0];
   if(count($optionstables)<1){
     $search_table="wp_options";
-    echo "<p class='error'>There was more no options table for WordPress, trying: <strong>".$search_table."</strong></p>";
-    $status[3]='red';
+    echo "<p class='error'>There was no options table for WordPress, trying: <strong>".$search_table."</strong></p>";
+    AddStatus('red', "There was no options table for WordPress, trying: <strong>".$search_table."</strong>");
   }
   elseif(count($optionstables)>1){
     echo "<p class='error'>There was more than one prefix for WordPress, using: <strong>".$search_table."</strong></p>";
-    $status[3]='red';
+    AddStatus('red', "There was more than one prefix for WordPress, using: <strong>".$search_table."</strong>");
   }else{
-    $status[3]='green';
+    AddStatus('green', 'Identified the current prefix');
   }
-  
+
   $search_q = "SELECT * FROM ".$search_table." WHERE option_name = 'siteurl'";
   $search_result=mysql_query($search_q);
   while ($search_row = mysql_fetch_array($search_result)) {
     $defaults['search'] = $search_row['option_value'];
   }
 }else{
-  $status[3]='green';
+  AddStatus('green', 'Identified the current prefix');
 }
 if($defaults['replace'] == ""){//the value we want to replace with should be the current directory on the current domain without a trailing '/'
   $defaults['replace'] = 'http://' . $_SERVER['HTTP_HOST'] . substr($_SERVER['REQUEST_URI'], 0, strrpos($_SERVER['REQUEST_URI'],'/'));
 }
 
-//status lights so we know everything is okay
-echo "<ul class='status'>";
-foreach($status as $lamp=>$colour){
-  echo "<li class='".$colour."'><span>" . $lamp . "</span></li>";
-}
-$status=array();
-echo "</ul>";
 ?>
 
-<form action="fixit.php" method="POST" accept-charset="utf-8">
-  <table border="0" cellspacing="5" cellpadding="5">
-    <tr>
-      <td class="title"><label for="search">Search</label></td>
-      <td><input type="text" name="search" value="<?php print $defaults['search']; ?>" id="search" size="50"></td>
-    </tr>
-    <tr>
-      <td class="title"><label for="replace">Replace</label></td>
-      <td><input type="text" name="replace" value="<?php print $defaults['replace']; ?>" id="replace" size="50"></td>
-    </tr>
-  </table>
+<form action="fixit.php" method="POST" accept-charset="utf-8" class="form">
+  <div class="row">
+      <div class="title"><label for="search">Search</label></div>
+      <div class="input-wrap"><input type="text" name="search" value="<?php print $defaults['search']; ?>" id="search" size="50"></div>
+  </div>
+  <div class="row">
+      <div class="title"><label for="replace">Replace</label></div>
+      <div class="input-wrap"><input type="text" name="replace" value="<?php print $defaults['replace']; ?>" id="replace" size="50"></div>
+  </div>
   <input id="submit" type="submit" value="Replace &rarr;">
 </form>
 
@@ -247,7 +283,7 @@ global$serialized_count_occurance;
                   }
                   $data[$key] = str_replace($find, $replace, $value);
                 }
-                
+
             }
         }
     } else {
@@ -261,115 +297,122 @@ global$serialized_count_occurance;
 
 }
 //only run replace if the form has been submitted
-if (($_POST['search'] && !$_POST['replace']) || (!$_POST['search'] && $_POST['replace'])) $status[1]='red';
+if (($_POST['search'] && !$_POST['replace']) || (!$_POST['search'] && $_POST['replace'])) {
+  AddStatus('red', 'Search and replace are both required');
+}
+
 if ($_POST['search'] && $_POST['replace']) :
-$status[1]='green';
+  AddStatus('green', 'Found Search and replace');
+
+  //query for tables
+  $query = "SHOW TABLES";
+  $result=mysql_query($query);
+  //save the number of tables
+  $num=mysql_num_rows($result);
+  //make sure the numbers start at 0 instead of NULL
+  $i=0;
+  $u=0;
+  $serialized_count=0;
+  $serialized_count_occurance=0;
 
 
-//query for tables
-$query = "SHOW TABLES";
-$result=mysql_query($query);
-//save the number of tables
-$num=mysql_num_rows($result);
-//make sure the numbers start at 0 instead of NULL
-$i=0;
-$u=0;
-$serialized_count=0;
-$serialized_count_occurance=0;
+  while ($row = mysql_fetch_array($result)) {
+    //for each table, show the columns
+    $cq = "show columns from ".$row[0]." where Type like '%char%' or Type like '%text'";
+    $cresult=mysql_query($cq);
+    while ($crow = mysql_fetch_array($cresult)) {
+      //for each column, update the value
+      $rq = "UPDATE ".$row[0]." SET ".$crow[0]." = replace(".$crow[0].", '".$searchanddestroy[0]."', '".$searchanddestroy[1]."') WHERE ".$crow[0]." NOT LIKE '_:%'";
+      $i++;//count the columns
+      $rresult=mysql_query($rq);
 
-
-while ($row = mysql_fetch_array($result)) {
-  //for each table, show the columns
-  $cq = "show columns from ".$row[0]." where Type like '%char%' or Type like '%text'";
-  $cresult=mysql_query($cq);
-  while ($crow = mysql_fetch_array($cresult)) {
-    //for each column, update the value
-    $rq = "UPDATE ".$row[0]." SET ".$crow[0]." = replace(".$crow[0].", '".$searchanddestroy[0]."', '".$searchanddestroy[1]."') WHERE ".$crow[0]." NOT LIKE '_:%'";
-    $i++;//count the columns
-    $rresult=mysql_query($rq);
-    
-    $numr=mysql_affected_rows();
-    $u+=$numr;//count affected rows
-  }
-  if($u>0){$status[2]='green';}else{$status[2]='red';}
-  //for each table, show the columns which are serialized
-  $cq = "SHOW columns FROM ".$row[0]." WHERE (Type LIKE '%char%' OR Type LIKE '%text')";
-  $cresult=mysql_query($cq);
-  while ($crow = mysql_fetch_array($cresult)) {
-    //select the rows that seem to be serialized
-    $serial_q = "SELECT ".$crow[0]." FROM ".$row[0]." WHERE ".$crow[0]." LIKE '_:%' AND ".$crow[0]." LIKE '%".$searchanddestroy[0]."%'";
-    $serial_result=mysql_query($serial_q);
-    while ($serial_row = mysql_fetch_array($serial_result)) {
-      //check if really serialized
-      if(is_serialized( $serial_row[0] )) {
-        $serialized_count++;
-        
-        //unserialize -> replace in array -> serialize
-        $new_serial_row = maybe_unserialize($serial_row[0]); 
-        recursive_array_replace($searchanddestroy[0], $searchanddestroy[1], $new_serial_row);
-        $new_serial_row = maybe_serialize($new_serial_row); 
-        
-        //lets update
-        $rq = "UPDATE ".$row[0]." SET ".$crow[0]." = '".$new_serial_row."' WHERE ".$crow[0]." = '".$serial_row[0]."'";
-        $rresult=mysql_query($rq);
-
-        //and count those rows
-        $numr=mysql_affected_rows();
-        $u+=$numr;//count affected rows
-      } 
+      $numr=mysql_affected_rows();
+      $u += $numr >= 0 ? $numr : 0;//count affected rows
     }
-    if($serialized_count_occurance>0){$status[3]='green';}else{$status[3]='red';}
-    $columns++;//count the columns
+
+    //for each table, show the columns which are serialized
+    $cq = "SHOW columns FROM ".$row[0]." WHERE (Type LIKE '%char%' OR Type LIKE '%text')";
+    $cresult=mysql_query($cq);
+    while ($crow = mysql_fetch_array($cresult)) {
+      //select the rows that seem to be serialized
+      $serial_q = "SELECT ".$crow[0]." FROM ".$row[0]." WHERE ".$crow[0]." LIKE '_:%' AND ".$crow[0]." LIKE '%".$searchanddestroy[0]."%'";
+      $serial_result=mysql_query($serial_q);
+      while ($serial_row = mysql_fetch_array($serial_result)) {
+        //check if really serialized
+        if(is_serialized( $serial_row[0] )) {
+          $serialized_count++;
+
+          //unserialize -> replace in array -> serialize
+          $new_serial_row = maybe_unserialize($serial_row[0]);
+          recursive_array_replace($searchanddestroy[0], $searchanddestroy[1], $new_serial_row);
+          $new_serial_row = maybe_serialize($new_serial_row);
+
+          //lets update
+          $rq = "UPDATE ".$row[0]." SET ".$crow[0]." = '".$new_serial_row."' WHERE ".$crow[0]." = '".$serial_row[0]."'";
+          $rresult=mysql_query($rq);
+
+          //and count those rows
+          $numr=mysql_affected_rows();
+          $u += $numr >= 0 ? $numr : 0;//count affected rows
+        }
+      }
+      $columns++;//count the columns
+    }
   }
-}
 
-if($u<1){$status[4]='red';
-}else{
-  $status[4]='green';
-}
-//print info about the replace
-?>
-<table border='0' cellspacing='5' cellpadding='5' id='results'>
-  <tr>
-    <td class='title'>Tables found:</td>
-    <td class='number'><?php print $num; ?></td>
-  </tr>
-  <tr>
-    <td class='title'>Columns found:</td>
-    <td class='number'><?php print $i; ?></td>
-  </tr>
-  <tr>
-    <td class='title'>Serialized rows fixed:</td>
-    <td class='number'><?php print $serialized_count; ?></td>
-  </tr>
-  <tr>
-    <td class='title'>Serialized occurances:</td>
-    <td class='number'><?php print $serialized_count_occurance; ?></td>
-  </tr>
-  <tr>
-    <td class='title'>Updated rows:</td>
-    <td class='number'><?php print $u; ?></td>
-  </tr>
-</table>
-<?php
+  if($serialized_count_occurance>0){
+    AddStatus('green', 'Found occurances in serialized data');
+  }else{
+    AddStatus('red', 'No occurances found in serialized data');
+  }
+  if($u<1){
+    AddStatus('red', 'No rows updated');
+  }else{
+    AddStatus('green', $u . ' rows updated');
+  }
+  //print info about the replace
+  ?>
+  <table border='0' cellspacing='5' cellpadding='5' id='results'>
+    <tr>
+      <td class='title'>Tables found:</td>
+      <td class='number'><?php print $num; ?></td>
+    </tr>
+    <tr>
+      <td class='title'>Columns found:</td>
+      <td class='number'><?php print $i; ?></td>
+    </tr>
+    <tr>
+      <td class='title'>Serialized rows fixed:</td>
+      <td class='number'><?php print $serialized_count; ?></td>
+    </tr>
+    <tr>
+      <td class='title'>Serialized occurances:</td>
+      <td class='number'><?php print $serialized_count_occurance; ?></td>
+    </tr>
+    <tr>
+      <td class='title'>Updated rows:</td>
+      <td class='number'><?php print $u; ?></td>
+    </tr>
+  </table>
+  <?php
 
-mysql_close();
+  mysql_close();
 
 
 endif;
 
-if($status[1]){
-  echo "<ul class='status'>";
-  foreach($status as $lamp=>$colour){
-    echo "<li class='".$colour."'><span>" . $lamp . "</span></li>";
-  }
-  echo "</ul>";
+//status lights so we know everything is okay
+echo "<ul class='status'>";
+foreach($statuses as $index=>$status){
+  echo "<li><span class='lamp ".$status->colour."'><span>" . ($index+1) . "</span></span><span>" . $status->message . "</span></li>";
 }
+echo "</ul>";
+
 ?>
 
   <div id="footer">
-    Created 2011 by Tamm Sjödin @ Nindev AB | 
-  <?php 
+    &copy; 2011-2017 by Tamm Sjödin |
+  <?php
   $mtime = explode(" ", microtime()); $endtime = $mtime[1] + $mtime[0]; $totaltime = ($endtime - $starttime);
   //print the time taken to execute the script
   echo 'Executed in ' .round($totaltime, 2). ' seconds.';
