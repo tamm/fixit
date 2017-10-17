@@ -34,6 +34,7 @@ Then the new data is inserted in the cell.
  *  Latest update: October 2017
  *  Version: 1.1
 
+
  *  Author: Tamm Sjödin
  *  Created: February 2011
  *  Latest update: December 1st 2011
