@@ -355,8 +355,9 @@ function fixit_tab_audit() {
 	?>
 	<div class="card" style="max-width:700px">
 		<h2 style="margin-top:0">URL Audit</h2>
-		<p>Scan your database for URLs that don't belong to the current site. Useful for cleaning up
-		   after a migration, or finding remnants of old domains.</p>
+		<p>Scan <strong>every table</strong> in your database for URLs — WordPress core, plugin tables,
+		   custom tables, everything. Finds remnants of old domains, partial migrations, or stale URLs
+		   hiding in serialized data.</p>
 
 		<p><button type="button" class="button button-primary" id="fixit-scan-btn">Scan Database</button></p>
 
@@ -432,9 +433,12 @@ function fixit_tab_audit() {
 							domains.sort(function(a,b){ return b.count - a.count; });
 							domains.forEach(function(d){
 								var isCurrent = (d.url === currentUrl);
+								var tableList = d.tables ? d.tables.join(', ') : '';
 								var tr = document.createElement('tr');
 								tr.innerHTML =
-									'<td><code>' + escHtml(d.url) + '</code></td>' +
+									'<td><code>' + escHtml(d.url) + '</code>' +
+									(tableList ? '<br><small style="color:#999">in: ' + escHtml(tableList) + '</small>' : '') +
+									'</td>' +
 									'<td>' + d.count + '</td>' +
 									'<td>' + (isCurrent
 										? '<span style="color:#00a32a">&#10003; Current site</span>'
@@ -513,48 +517,61 @@ function fixit_ajax_scan_urls() {
 
 	global $wpdb;
 
-	$domains = array();
+	$domains    = array();
+	$tables_hit = array();
 
-	// Scan key WordPress tables for URL patterns.
-	$scan_targets = array(
-		array( $wpdb->options,  'option_value' ),
-		array( $wpdb->posts,    'guid' ),
-		array( $wpdb->posts,    'post_content' ),
-		array( $wpdb->postmeta, 'meta_value' ),
-		array( $wpdb->comments, 'comment_author_url' ),
-		array( $wpdb->comments, 'comment_content' ),
-	);
+	// Walk EVERY table in the database — not just core WP tables.
+	// Plugin tables (WooCommerce, ACF, etc.), custom tables, everything.
+	$tables = $wpdb->get_col( 'SHOW TABLES' );
 
-	foreach ( $scan_targets as $target ) {
-		list( $table, $column ) = $target;
+	foreach ( $tables as $table ) {
+		// Get all text-type columns in this table.
+		$columns = $wpdb->get_results(
+			"SHOW COLUMNS FROM `{$table}` WHERE Type LIKE '%char%' OR Type LIKE '%text%' OR Type LIKE '%blob%'"
+		);
 
-		// Check table exists (multisite or custom setups may differ).
-		$exists = $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s', DB_NAME, $table ) );
-		if ( ! $exists ) {
+		if ( ! $columns ) {
 			continue;
 		}
 
-		$rows = $wpdb->get_col(
-			"SELECT `{$column}` FROM `{$table}` WHERE `{$column}` LIKE '%http://%' OR `{$column}` LIKE '%https://%' LIMIT 5000"
-		);
+		foreach ( $columns as $col ) {
+			$col_name = $col->Field;
 
-		foreach ( $rows as $value ) {
-			if ( preg_match_all( '#https?://[a-zA-Z0-9._-]+(?:\:[0-9]+)?#', $value, $matches ) ) {
-				foreach ( $matches[0] as $url ) {
-					$url = rtrim( strtolower( $url ), '/' );
-					if ( ! isset( $domains[ $url ] ) ) {
-						$domains[ $url ] = 0;
+			$rows = $wpdb->get_col(
+				"SELECT `{$col_name}` FROM `{$table}` WHERE `{$col_name}` LIKE '%http://%' OR `{$col_name}` LIKE '%https://%'"
+			);
+
+			foreach ( $rows as $value ) {
+				// Handle serialized data — peek inside it for URLs too.
+				if ( is_serialized( $value ) ) {
+					$unserialized = @unserialize( $value );
+					if ( false !== $unserialized || 'b:0;' === $value ) {
+						$value = fixit_flatten_to_string( $unserialized );
 					}
-					$domains[ $url ]++;
+				}
+
+				if ( preg_match_all( '#https?://[a-zA-Z0-9._-]+(?:\:[0-9]+)?#', $value, $matches ) ) {
+					foreach ( $matches[0] as $url ) {
+						$url = rtrim( strtolower( $url ), '/' );
+						if ( ! isset( $domains[ $url ] ) ) {
+							$domains[ $url ] = array( 'count' => 0, 'tables' => array() );
+						}
+						$domains[ $url ]['count']++;
+						$domains[ $url ]['tables'][ $table ] = true;
+					}
 				}
 			}
 		}
 	}
 
-	// Format for response.
+	// Format for response — include which tables each domain was found in.
 	$result = array();
-	foreach ( $domains as $url => $count ) {
-		$result[] = array( 'url' => $url, 'count' => $count );
+	foreach ( $domains as $url => $info ) {
+		$result[] = array(
+			'url'    => $url,
+			'count'  => $info['count'],
+			'tables' => array_keys( $info['tables'] ),
+		);
 	}
 
 	wp_send_json_success( array( 'domains' => $result ) );
@@ -652,6 +669,26 @@ function fixit_recursive_replace( $search, $replace, $data, &$count = 0 ) {
 /* =========================================================================
    UTILITIES
    ========================================================================= */
+
+/**
+ * Recursively extract all string values from a nested array/object
+ * into a single string for URL scanning.
+ */
+function fixit_flatten_to_string( $data ) {
+	$parts = array();
+	if ( is_array( $data ) ) {
+		foreach ( $data as $value ) {
+			$parts[] = fixit_flatten_to_string( $value );
+		}
+	} elseif ( is_object( $data ) ) {
+		foreach ( get_object_vars( $data ) as $value ) {
+			$parts[] = fixit_flatten_to_string( $value );
+		}
+	} elseif ( is_string( $data ) ) {
+		return $data;
+	}
+	return implode( ' ', $parts );
+}
 
 function fixit_detect_current_url() {
 	$is_ssl = ( ! empty( $_SERVER['HTTPS'] ) && 'off' !== $_SERVER['HTTPS'] )
