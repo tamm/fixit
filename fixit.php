@@ -1,423 +1,710 @@
 <?php
-/*
- *  fixit.php was created to move WordPress between domains or directories, it also works to make general search and replace in a wordpress installation
- *  Author: Tamm Sjödin
- *  Created: February 2011
- *  Latest update: October 2017
- *  Version: 1.1
-*/
+/**
+ * Plugin Name: Fixit
+ * Plugin URI:  https://github.com/tamm/fixit
+ * Description: WordPress migration toolkit. Prepare migrations before moving, emergency-fix broken moves, or audit stale URLs left behind by past migrations.
+ * Version:     2.0.0
+ * Author:      Tamm Sjödin
+ * Author URI:  https://github.com/tamm
+ * License:     MIT
+ * License URI: https://opensource.org/licenses/MIT
+ * Requires at least: 5.0
+ * Requires PHP: 7.4
+ * Text Domain: fixit
+ */
 
-//Start timer to check script performance
-$mtime = explode(' ', microtime());
-$starttime = $mtime[1] + $mtime[0];
+defined( 'ABSPATH' ) || exit;
 
-//Ignore errors due to funcionality loaded in the wp-config.php -> wp-settings.php related to magic quotes
-error_reporting("E_ALL & ~E_DEPRECATED");
-//define the current dir the same way wordpress does
-define( 'ABSPATH', dirname(__FILE__) . '/' );
-?>
-<html>
-<head>
-  <meta http-equiv="Content-type" content="text/html; charset=utf-8">
-  <title>fixit - fix those urls in wordpress database</title>
-  <style type="text/css" media="screen">
-    body {
-      background: #eaeaea center 150px repeat-x;
-      background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAA0CAIAAAAxPk5wAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAA2ZpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMC1jMDYwIDYxLjEzNDc3NywgMjAxMC8wMi8xMi0xNzozMjowMCAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0UmVmPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VSZWYjIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDpGQzdGMTE3NDA3MjA2ODExOTEwOUJDODY0NDYyOUE3QiIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDo2MjAyREQ4RUFCQTIxMUUwQjMyQjkxRjNFNjIyOTAwRSIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDo2MjAyREQ4REFCQTIxMUUwQjMyQjkxRjNFNjIyOTAwRSIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ1M1IE1hY2ludG9zaCI+IDx4bXBNTTpEZXJpdmVkRnJvbSBzdFJlZjppbnN0YW5jZUlEPSJ4bXAuaWlkOkMzMEM0MzQzNzI2QjExRTA5Q0M2OUE1REQwMzQ2M0I0IiBzdFJlZjpkb2N1bWVudElEPSJ4bXAuZGlkOkMzMEM0MzQ0NzI2QjExRTA5Q0M2OUE1REQwMzQ2M0I0Ii8+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+qIOJpQAAACZJREFUeNpiZNnziYEQYGIgAowqGlU0qmhU0aiiUUWjikhRBBBgAEicAhpMT1fJAAAAAElFTkSuQmCC); /* this is the nindev stripe in base64*/
-      font: 14px normal;
-      font-family: sans-serif;
-      margin: 0;
-    }
+define( 'FIXIT_VERSION', '2.0.0' );
+define( 'FIXIT_FILE', __FILE__ );
+define( 'FIXIT_DIR', plugin_dir_path( __FILE__ ) );
 
-    #wrapper {
-      width: 500px;
-      margin: 60px auto;
-      background: #fff;
-      padding: 20px;
-      -webkit-border-radius: 10px;
-      -moz-border-radius: 10px;
-      border-radius: 10px;
-    }
+/* =========================================================================
+   MIGRATION INTERCEPT — runs before WordPress tries to redirect anywhere
+   ========================================================================= */
 
-    #wrapper p {
-      text-align: center;
-    }
+add_action( 'plugins_loaded', 'fixit_migration_intercept', 0 );
 
-    #wrapper form table {
-      margin: 0 auto;
-    }
+function fixit_migration_intercept() {
+	if ( ! isset( $_GET['fixit_migrate'] ) ) {
+		return;
+	}
 
-    #footer {
-      font-size: 0.7em;
-      color: #999;
-      text-align: center;
-    }
+	$token = get_option( 'fixit_migration_token' );
+	if ( ! $token || ! hash_equals( $token, sanitize_text_field( $_GET['fixit_migrate'] ) ) ) {
+		fixit_standalone_page( 'Fixit — Invalid Token', '<p>The migration token is invalid or has expired.</p><p>If you prepared this migration, go back to the <strong>old</strong> site\'s wp-admin &rarr; Tools &rarr; Fixit to find the correct URL.</p>' );
+		exit;
+	}
 
-    .form {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-    }
+	$migration = get_option( 'fixit_migration_data' );
+	if ( ! $migration || ! is_array( $migration ) ) {
+		fixit_standalone_page( 'Fixit — No Migration Data', '<p>No pending migration was found. It may have already been completed.</p>' );
+		exit;
+	}
 
-    .form .row {
-      display: flex;
-      flex-direction: row;
-      justify-content: right;
-      align-items: center;
-      margin-bottom: 1em;
-    }
+	$old_url = $migration['source_url'];
 
-    .input-wrap {
-      flex-grow: 1;
-    }
+	if ( ! empty( $migration['target_url'] ) ) {
+		$new_url = $migration['target_url'];
+	} else {
+		$new_url = fixit_detect_current_url();
+	}
 
-    p.error{
-      color: #f00;
-    }
+	$results = fixit_search_replace( $old_url, $new_url );
 
-    ul.status {
-      text-align: center;
-      padding: 0;
-    }
+	delete_option( 'fixit_migration_token' );
+	delete_option( 'fixit_migration_data' );
+	set_transient( 'fixit_migration_complete', true, 3600 );
 
-    ul.status li{
-      position: relative;
-      list-style: none;
-      vertical-align: middle;
-      margin: 5px;
-    }
+	$admin_url = esc_url( $new_url . '/wp-admin/' );
 
-    ul.status li .lamp{
-      display: inline-block;
-      position: relative;
-      list-style: none;
-      width: 20px;
-      height: 20px;
-      -moz-border-radius: 15px; /* FF1+ */
-      -webkit-border-radius: 15px; /* Saf3+, Chrome */
-      border-radius: 15px; /* Opera 10.5, IE 9 */
-      text-align: center;
-      vertical-align: middle;
-      margin: 0 5px;
-    }
+	ob_start();
+	?>
+	<h2>Migration complete</h2>
+	<table style="margin:1.5em 0;border-collapse:collapse">
+		<tr><td style="padding:4px 12px 4px 0;color:#666">Replaced</td><td><code><?php echo esc_html( $old_url ); ?></code></td></tr>
+		<tr><td style="padding:4px 12px 4px 0;color:#666">With</td><td><code><?php echo esc_html( $new_url ); ?></code></td></tr>
+	</table>
+	<table style="margin:1.5em 0;border-collapse:collapse">
+		<tr><td style="padding:4px 12px 4px 0;color:#666">Tables scanned</td><td><strong><?php echo (int) $results['tables']; ?></strong></td></tr>
+		<tr><td style="padding:4px 12px 4px 0;color:#666">Columns scanned</td><td><strong><?php echo (int) $results['columns']; ?></strong></td></tr>
+		<tr><td style="padding:4px 12px 4px 0;color:#666">Rows updated</td><td><strong><?php echo (int) $results['rows_updated']; ?></strong></td></tr>
+		<tr><td style="padding:4px 12px 4px 0;color:#666">Serialized fields fixed</td><td><strong><?php echo (int) $results['serialized_rows']; ?></strong></td></tr>
+		<tr><td style="padding:4px 12px 4px 0;color:#666">Serialized occurrences</td><td><strong><?php echo (int) $results['serialized_occurrences']; ?></strong></td></tr>
+	</table>
+	<?php if ( ! empty( $results['errors'] ) ) : ?>
+		<div style="background:#fef0f0;border-left:4px solid #d63638;padding:10px 14px;margin:1em 0">
+			<strong>Errors:</strong>
+			<ul style="margin:0.5em 0 0 1.2em"><?php foreach ( $results['errors'] as $e ) { echo '<li>' . esc_html( $e ) . '</li>'; } ?></ul>
+		</div>
+	<?php endif; ?>
+	<p style="margin-top:2em">
+		<a href="<?php echo $admin_url; ?>" style="display:inline-block;padding:10px 24px;background:#2271b1;color:#fff;text-decoration:none;border-radius:4px;font-weight:600">Go to Dashboard &rarr;</a>
+	</p>
+	<p style="color:#666;font-size:0.9em">You can safely remove Fixit from Plugins once you've confirmed everything works.</p>
+	<?php
+	fixit_standalone_page( 'Fixit — Migration Complete', ob_get_clean() );
+	exit;
+}
 
-    ul.status li span{
-      display: inline-block;
-      vertical-align: middle;
-    }
+/* =========================================================================
+   ADMIN NOTICE after migration
+   ========================================================================= */
 
-    ul.status li .lamp span{
-      display: inline-block;
-      line-height: 20px;
-      font-weight: bold;
-    }
+add_action( 'admin_notices', 'fixit_admin_notices' );
 
-    .lamp.green{
-      background-color: #00aa00;
-      color: #fff;
-    }
+function fixit_admin_notices() {
+	if ( get_transient( 'fixit_migration_complete' ) ) {
+		delete_transient( 'fixit_migration_complete' );
+		echo '<div class="notice notice-success is-dismissible"><p><strong>Fixit:</strong> Migration completed successfully. You can <a href="' . esc_url( admin_url( 'plugins.php' ) ) . '">deactivate and remove Fixit</a> if you no longer need it.</p></div>';
+	}
+}
 
-    .lamp.red{
-      background-color: #ff0000;
-      color: #fff;
-    }
+/* =========================================================================
+   ADMIN MENU
+   ========================================================================= */
 
-    a:link, a:visited {
-      color: #04bbf2;
-    }
+add_action( 'admin_menu', 'fixit_admin_menu' );
 
-    #submit{
-      background-color: #04baf0;
-      color: #fff;
-      width: 100%;
-      margin: 0 auto;
-      display: block;
-      height: 36px;
-      font-weight: bold;
-      font-size: 16px;
-      font-family: 'Helvetica Neue',Helvetica,sans-serif;
-      border: none;
-      box-shadow: inset 0 -4px 0 rgba(0,0,0,0.3);
-    }
+function fixit_admin_menu() {
+	add_management_page(
+		'Fixit — WordPress Migration',
+		'Fixit',
+		'manage_options',
+		'fixit',
+		'fixit_admin_page'
+	);
+}
 
-    input[type=text]{
-      font-size: 16px;
-      border: none;
-      background: #eaeaea;
-      padding: 0.5em 0.3em;
-      width: 100%;
-    }
+/* =========================================================================
+   ADMIN FORM HANDLERS
+   ========================================================================= */
 
-    #results{
-      margin: 0 auto;
-    }
+add_action( 'admin_init', 'fixit_handle_actions' );
 
-    .title{
-      color: #777;
-      text-align: right;
-      font-size: 0.8em;
-      padding-right: 0.5em;
-    }
+function fixit_handle_actions() {
+	if ( ! isset( $_POST['fixit_action'] ) || ! current_user_can( 'manage_options' ) ) {
+		return;
+	}
 
-    .number{
-      width: 60px;
-    }
-  </style>
-</head>
-<body>
-<div id="wrapper">
-<?php
+	$action = sanitize_text_field( $_POST['fixit_action'] );
+
+	// --- Prepare migration ---
+	if ( $action === 'prepare_migration' ) {
+		check_admin_referer( 'fixit_prepare_migration' );
+
+		$target = isset( $_POST['fixit_target_url'] ) ? esc_url_raw( trim( $_POST['fixit_target_url'] ) ) : '';
+		$target = untrailingslashit( $target );
+
+		$token  = bin2hex( random_bytes( 16 ) );
+		$source = untrailingslashit( site_url() );
+
+		update_option( 'fixit_migration_token', $token, false );
+		update_option( 'fixit_migration_data', array(
+			'source_url' => $source,
+			'target_url' => $target,
+			'created'    => current_time( 'mysql' ),
+		), false );
+
+		wp_safe_redirect( admin_url( 'tools.php?page=fixit&tab=migrate&prepared=1' ) );
+		exit;
+	}
+
+	// --- Cancel migration ---
+	if ( $action === 'cancel_migration' ) {
+		check_admin_referer( 'fixit_cancel_migration' );
+		delete_option( 'fixit_migration_token' );
+		delete_option( 'fixit_migration_data' );
+
+		wp_safe_redirect( admin_url( 'tools.php?page=fixit&tab=migrate&cancelled=1' ) );
+		exit;
+	}
+
+	// --- Quick replace (URL audit) ---
+	if ( $action === 'quick_replace' ) {
+		check_admin_referer( 'fixit_quick_replace' );
+
+		$search  = isset( $_POST['fixit_search'] ) ? sanitize_text_field( wp_unslash( $_POST['fixit_search'] ) ) : '';
+		$replace = isset( $_POST['fixit_replace'] ) ? sanitize_text_field( wp_unslash( $_POST['fixit_replace'] ) ) : '';
+
+		if ( $search && $replace && $search !== $replace ) {
+			$results = fixit_search_replace( $search, $replace );
+			set_transient( 'fixit_last_replace', $results, 300 );
+		}
+
+		wp_safe_redirect( admin_url( 'tools.php?page=fixit&tab=audit&replaced=1' ) );
+		exit;
+	}
+}
+
+/* =========================================================================
+   ADMIN PAGE RENDERER
+   ========================================================================= */
+
+function fixit_admin_page() {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		return;
+	}
+
+	$tab = isset( $_GET['tab'] ) ? sanitize_text_field( $_GET['tab'] ) : 'migrate';
+	$tabs = array(
+		'migrate'   => 'Prepare Migration',
+		'audit'     => 'URL Audit',
+		'emergency' => 'Emergency',
+	);
+	?>
+	<div class="wrap">
+		<h1>Fixit <small style="font-weight:normal;color:#999">v<?php echo esc_html( FIXIT_VERSION ); ?></small></h1>
+
+		<nav class="nav-tab-wrapper">
+			<?php foreach ( $tabs as $slug => $label ) : ?>
+				<a href="<?php echo esc_url( admin_url( 'tools.php?page=fixit&tab=' . $slug ) ); ?>"
+				   class="nav-tab <?php echo $tab === $slug ? 'nav-tab-active' : ''; ?>">
+					<?php echo esc_html( $label ); ?>
+				</a>
+			<?php endforeach; ?>
+		</nav>
+
+		<div style="margin-top:20px">
+			<?php
+			switch ( $tab ) {
+				case 'migrate':
+					fixit_tab_migrate();
+					break;
+				case 'audit':
+					fixit_tab_audit();
+					break;
+				case 'emergency':
+					fixit_tab_emergency();
+					break;
+			}
+			?>
+		</div>
+	</div>
+	<?php
+}
+
+/* ----- Tab: Prepare Migration ------------------------------------------ */
+
+function fixit_tab_migrate() {
+	$migration = get_option( 'fixit_migration_data' );
+	$token     = get_option( 'fixit_migration_token' );
+
+	if ( isset( $_GET['cancelled'] ) ) {
+		echo '<div class="notice notice-info inline"><p>Migration cancelled.</p></div>';
+	}
+
+	if ( $migration && $token ) {
+		// --- Migration is prepared, show status ---
+		$source = esc_html( $migration['source_url'] );
+		$target = ! empty( $migration['target_url'] ) ? $migration['target_url'] : false;
+		$created = esc_html( $migration['created'] );
+
+		if ( $target ) {
+			$magic_url = esc_url( $target . '/?fixit_migrate=' . $token );
+		}
+
+		if ( isset( $_GET['prepared'] ) ) {
+			echo '<div class="notice notice-success inline"><p>Migration prepared.</p></div>';
+		}
+		?>
+		<div class="card" style="max-width:700px">
+			<h2 style="margin-top:0">Migration Ready</h2>
+			<p>Prepared on <?php echo $created; ?></p>
+
+			<table class="form-table" role="presentation">
+				<tr>
+					<th>Source</th>
+					<td><code><?php echo $source; ?></code></td>
+				</tr>
+				<tr>
+					<th>Target</th>
+					<td>
+						<?php if ( $target ) : ?>
+							<code><?php echo esc_html( $target ); ?></code>
+						<?php else : ?>
+							<em>Auto-detect (will use the domain you visit the migration URL from)</em>
+						<?php endif; ?>
+					</td>
+				</tr>
+			</table>
+
+			<h3>Your migration URL</h3>
+			<?php if ( $target ) : ?>
+				<p>After copying your WordPress files and database to the new location, visit:</p>
+				<input type="text" value="<?php echo $magic_url; ?>" readonly
+				       onclick="this.select()" style="width:100%;font-size:14px;padding:8px;font-family:monospace">
+			<?php else : ?>
+				<p>After copying your WordPress files and database, visit this URL on the <strong>new</strong> domain:</p>
+				<input type="text" value="/?fixit_migrate=<?php echo esc_attr( $token ); ?>" readonly
+				       onclick="this.select()" style="width:100%;font-size:14px;padding:8px;font-family:monospace">
+				<p class="description">Prepend your new domain, e.g. <code>https://newdomain.com/?fixit_migrate=<?php echo esc_html( $token ); ?></code></p>
+			<?php endif; ?>
+
+			<h3 style="margin-top:2em">What happens next</h3>
+			<ol>
+				<li>Copy your WordPress files and database to the new server / domain.</li>
+				<li>Visit the migration URL above on the new domain.</li>
+				<li>Fixit will replace <code><?php echo $source; ?></code> with the new URL everywhere in the database.</li>
+				<li>Your site works on the new domain. Done.</li>
+			</ol>
+		</div>
+
+		<form method="post" style="margin-top:16px">
+			<?php wp_nonce_field( 'fixit_cancel_migration' ); ?>
+			<input type="hidden" name="fixit_action" value="cancel_migration">
+			<button type="submit" class="button" onclick="return confirm('Cancel the prepared migration?')">Cancel Migration</button>
+		</form>
+		<?php
+	} else {
+		// --- No migration pending, show setup form ---
+		$current_url = untrailingslashit( site_url() );
+		?>
+		<div class="card" style="max-width:700px">
+			<h2 style="margin-top:0">Prepare a Migration</h2>
+			<p>Set up your migration <strong>before</strong> you move. Fixit will store the current URL and generate
+			   a one-click migration link for your new location.</p>
+
+			<form method="post">
+				<?php wp_nonce_field( 'fixit_prepare_migration' ); ?>
+				<input type="hidden" name="fixit_action" value="prepare_migration">
+
+				<table class="form-table" role="presentation">
+					<tr>
+						<th><label>Current Site URL</label></th>
+						<td><code><?php echo esc_html( $current_url ); ?></code></td>
+					</tr>
+					<tr>
+						<th><label for="fixit_target_url">Target URL</label></th>
+						<td>
+							<input type="url" id="fixit_target_url" name="fixit_target_url"
+							       placeholder="https://newdomain.com" class="regular-text" value="">
+							<p class="description">
+								Leave blank to auto-detect from wherever you open the migration link.
+								<br>Include the full URL with scheme, e.g. <code>https://newdomain.com</code> or <code>https://example.com/blog</code>
+							</p>
+						</td>
+					</tr>
+				</table>
+
+				<p class="submit">
+					<button type="submit" class="button button-primary">Prepare Migration</button>
+				</p>
+			</form>
+		</div>
+		<?php
+	}
+}
+
+/* ----- Tab: URL Audit -------------------------------------------------- */
+
+function fixit_tab_audit() {
+	$current_url = untrailingslashit( site_url() );
+	$last_replace = get_transient( 'fixit_last_replace' );
+
+	if ( isset( $_GET['replaced'] ) && $last_replace ) {
+		delete_transient( 'fixit_last_replace' );
+		?>
+		<div class="notice notice-success inline">
+			<p><strong>Replacement complete.</strong>
+				<?php echo (int) $last_replace['rows_updated']; ?> rows updated,
+				<?php echo (int) $last_replace['serialized_rows']; ?> serialized fields fixed.</p>
+		</div>
+		<?php
+	}
+	?>
+	<div class="card" style="max-width:700px">
+		<h2 style="margin-top:0">URL Audit</h2>
+		<p>Scan your database for URLs that don't belong to the current site. Useful for cleaning up
+		   after a migration, or finding remnants of old domains.</p>
+
+		<p><button type="button" class="button button-primary" id="fixit-scan-btn">Scan Database</button></p>
+
+		<div id="fixit-scan-results" style="display:none">
+			<h3>Domains found</h3>
+			<table class="widefat striped" id="fixit-domains-table">
+				<thead>
+					<tr>
+						<th style="width:50%">Domain</th>
+						<th>Occurrences</th>
+						<th>Status</th>
+					</tr>
+				</thead>
+				<tbody></tbody>
+			</table>
+		</div>
+	</div>
+
+	<div class="card" style="max-width:700px;margin-top:20px">
+		<h2 style="margin-top:0">Search &amp; Replace</h2>
+		<p>Replace a specific URL across the entire database (serialization-aware).</p>
+		<form method="post">
+			<?php wp_nonce_field( 'fixit_quick_replace' ); ?>
+			<input type="hidden" name="fixit_action" value="quick_replace">
+			<table class="form-table" role="presentation">
+				<tr>
+					<th><label for="fixit_search">Search for</label></th>
+					<td><input type="text" id="fixit_search" name="fixit_search" class="regular-text" placeholder="https://old-domain.com" required></td>
+				</tr>
+				<tr>
+					<th><label for="fixit_replace">Replace with</label></th>
+					<td>
+						<input type="text" id="fixit_replace" name="fixit_replace" class="regular-text"
+						       value="<?php echo esc_attr( $current_url ); ?>" required>
+					</td>
+				</tr>
+			</table>
+			<p class="submit">
+				<button type="submit" class="button button-primary"
+				        onclick="return confirm('This will search and replace across your entire database. Proceed?')">
+					Replace
+				</button>
+			</p>
+		</form>
+	</div>
+
+	<script>
+	(function(){
+		var btn = document.getElementById('fixit-scan-btn');
+		var results = document.getElementById('fixit-scan-results');
+		var tbody = document.querySelector('#fixit-domains-table tbody');
+		var currentUrl = <?php echo wp_json_encode( $current_url ); ?>;
+
+		btn.addEventListener('click', function(){
+			btn.disabled = true;
+			btn.textContent = 'Scanning\u2026';
+			tbody.innerHTML = '';
+			results.style.display = 'none';
+
+			var xhr = new XMLHttpRequest();
+			xhr.open('POST', ajaxurl);
+			xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+			xhr.onload = function(){
+				btn.disabled = false;
+				btn.textContent = 'Scan Database';
+				try {
+					var resp = JSON.parse(xhr.responseText);
+					if (resp.success && resp.data.domains) {
+						var domains = resp.data.domains;
+						if (domains.length === 0) {
+							tbody.innerHTML = '<tr><td colspan="3">No URLs found.</td></tr>';
+						} else {
+							domains.sort(function(a,b){ return b.count - a.count; });
+							domains.forEach(function(d){
+								var isCurrent = (d.url === currentUrl);
+								var tr = document.createElement('tr');
+								tr.innerHTML =
+									'<td><code>' + escHtml(d.url) + '</code></td>' +
+									'<td>' + d.count + '</td>' +
+									'<td>' + (isCurrent
+										? '<span style="color:#00a32a">&#10003; Current site</span>'
+										: '<span style="color:#b32d2e">Foreign</span>') + '</td>';
+								tbody.appendChild(tr);
+							});
+						}
+						results.style.display = '';
+					}
+				} catch(e) {
+					alert('Scan failed. Check the browser console.');
+					console.error(e, xhr.responseText);
+				}
+			};
+			xhr.send('action=fixit_scan_urls&_wpnonce=' + <?php echo wp_json_encode( wp_create_nonce( 'fixit_scan_urls' ) ); ?>);
+		});
+
+		function escHtml(s){
+			var d = document.createElement('div');
+			d.appendChild(document.createTextNode(s));
+			return d.innerHTML;
+		}
+	})();
+	</script>
+	<?php
+}
+
+/* ----- Tab: Emergency -------------------------------------------------- */
+
+function fixit_tab_emergency() {
+	$emergency_file = FIXIT_DIR . 'fixit-emergency.php';
+	$exists = file_exists( $emergency_file );
+	?>
+	<div class="card" style="max-width:700px">
+		<h2 style="margin-top:0">Emergency Standalone Fix</h2>
+		<p>If your WordPress site is broken after a move and you <strong>can't access wp-admin</strong>,
+		   use the standalone emergency script.</p>
+
+		<h3>How to use</h3>
+		<ol>
+			<li>Connect to your server via FTP or SSH.</li>
+			<li>
+				Copy <code>fixit-emergency.php</code> from the plugin directory to your <strong>WordPress root</strong>
+				(the same directory as <code>wp-config.php</code>).
+				<?php if ( $exists ) : ?>
+					<br><code style="font-size:0.85em"><?php echo esc_html( $emergency_file ); ?></code>
+				<?php else : ?>
+					<br><span style="color:#b32d2e">File not found in plugin directory.</span>
+				<?php endif; ?>
+			</li>
+			<li>Visit <code>https://your-domain.com/fixit-emergency.php</code> in your browser.</li>
+			<li>Verify the detected old and new URLs, then click <strong>Fix It</strong>.</li>
+			<li>After fixing, click <strong>Delete this file</strong> to clean up.</li>
+		</ol>
+
+		<div style="background:#fef8ee;border-left:4px solid #dba617;padding:10px 14px;margin:1em 0">
+			<strong>Security note:</strong> The emergency file gives direct database access.
+			Always delete it immediately after use.
+		</div>
+	</div>
+	<?php
+}
+
+/* =========================================================================
+   AJAX: Scan URLs
+   ========================================================================= */
+
+add_action( 'wp_ajax_fixit_scan_urls', 'fixit_ajax_scan_urls' );
+
+function fixit_ajax_scan_urls() {
+	check_ajax_referer( 'fixit_scan_urls' );
+
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_send_json_error( 'Unauthorized' );
+	}
+
+	global $wpdb;
+
+	$domains = array();
+
+	// Scan key WordPress tables for URL patterns.
+	$scan_targets = array(
+		array( $wpdb->options,  'option_value' ),
+		array( $wpdb->posts,    'guid' ),
+		array( $wpdb->posts,    'post_content' ),
+		array( $wpdb->postmeta, 'meta_value' ),
+		array( $wpdb->comments, 'comment_author_url' ),
+		array( $wpdb->comments, 'comment_content' ),
+	);
+
+	foreach ( $scan_targets as $target ) {
+		list( $table, $column ) = $target;
+
+		// Check table exists (multisite or custom setups may differ).
+		$exists = $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s', DB_NAME, $table ) );
+		if ( ! $exists ) {
+			continue;
+		}
+
+		$rows = $wpdb->get_col(
+			"SELECT `{$column}` FROM `{$table}` WHERE `{$column}` LIKE '%http://%' OR `{$column}` LIKE '%https://%' LIMIT 5000"
+		);
+
+		foreach ( $rows as $value ) {
+			if ( preg_match_all( '#https?://[a-zA-Z0-9._-]+(?:\:[0-9]+)?#', $value, $matches ) ) {
+				foreach ( $matches[0] as $url ) {
+					$url = rtrim( strtolower( $url ), '/' );
+					if ( ! isset( $domains[ $url ] ) ) {
+						$domains[ $url ] = 0;
+					}
+					$domains[ $url ]++;
+				}
+			}
+		}
+	}
+
+	// Format for response.
+	$result = array();
+	foreach ( $domains as $url => $count ) {
+		$result[] = array( 'url' => $url, 'count' => $count );
+	}
+
+	wp_send_json_success( array( 'domains' => $result ) );
+}
+
+/* =========================================================================
+   DATABASE ENGINE — serialization-aware search & replace
+   ========================================================================= */
+
+function fixit_search_replace( $search, $replace ) {
+	global $wpdb;
+
+	$results = array(
+		'tables'                 => 0,
+		'columns'                => 0,
+		'rows_updated'           => 0,
+		'serialized_rows'        => 0,
+		'serialized_occurrences' => 0,
+		'errors'                 => array(),
+	);
+
+	$tables = $wpdb->get_col( 'SHOW TABLES' );
+	$results['tables'] = count( $tables );
+
+	foreach ( $tables as $table ) {
+		$columns = $wpdb->get_results( "SHOW COLUMNS FROM `{$table}` WHERE Type LIKE '%char%' OR Type LIKE '%text%' OR Type LIKE '%blob%'" );
+
+		foreach ( $columns as $col ) {
+			$col_name = $col->Field;
+			$results['columns']++;
+
+			// Plain replacement for non-serialized data.
+			$wpdb->query( $wpdb->prepare(
+				"UPDATE `{$table}` SET `{$col_name}` = REPLACE(`{$col_name}`, %s, %s) WHERE `{$col_name}` NOT LIKE '_:%%' AND `{$col_name}` LIKE %s",
+				$search,
+				$replace,
+				'%' . $wpdb->esc_like( $search ) . '%'
+			) );
+			$results['rows_updated'] += max( 0, (int) $wpdb->rows_affected );
+
+			// Serialized data: must unserialize, replace, reserialize to preserve string lengths.
+			$serial_rows = $wpdb->get_col( $wpdb->prepare(
+				"SELECT `{$col_name}` FROM `{$table}` WHERE `{$col_name}` LIKE '_:%%' AND `{$col_name}` LIKE %s",
+				'%' . $wpdb->esc_like( $search ) . '%'
+			) );
+
+			foreach ( $serial_rows as $value ) {
+				if ( ! is_serialized( $value ) ) {
+					continue;
+				}
+
+				$results['serialized_rows']++;
+				$unserialized = @unserialize( $value );
+
+				if ( false === $unserialized && 'b:0;' !== $value ) {
+					$results['errors'][] = "Could not unserialize a value in {$table}.{$col_name}";
+					continue;
+				}
+
+				$count = 0;
+				$unserialized = fixit_recursive_replace( $search, $replace, $unserialized, $count );
+				$results['serialized_occurrences'] += $count;
+
+				$new_value = serialize( $unserialized );
+
+				$wpdb->query( $wpdb->prepare(
+					"UPDATE `{$table}` SET `{$col_name}` = %s WHERE `{$col_name}` = %s",
+					$new_value,
+					$value
+				) );
+				$results['rows_updated'] += max( 0, (int) $wpdb->rows_affected );
+			}
+		}
+	}
+
+	return $results;
+}
+
+function fixit_recursive_replace( $search, $replace, $data, &$count = 0 ) {
+	if ( is_array( $data ) ) {
+		foreach ( $data as $key => $value ) {
+			$data[ $key ] = fixit_recursive_replace( $search, $replace, $value, $count );
+		}
+	} elseif ( is_object( $data ) ) {
+		foreach ( get_object_vars( $data ) as $key => $value ) {
+			$data->$key = fixit_recursive_replace( $search, $replace, $value, $count );
+		}
+	} elseif ( is_string( $data ) ) {
+		$count += substr_count( $data, $search );
+		$data = str_replace( $search, $replace, $data );
+	}
+	return $data;
+}
+
+/* =========================================================================
+   UTILITIES
+   ========================================================================= */
+
+function fixit_detect_current_url() {
+	$is_ssl = ( ! empty( $_SERVER['HTTPS'] ) && 'off' !== $_SERVER['HTTPS'] )
+	           || ( ! empty( $_SERVER['SERVER_PORT'] ) && 443 == $_SERVER['SERVER_PORT'] );
+	$scheme = $is_ssl ? 'https' : 'http';
+	$host   = sanitize_text_field( $_SERVER['HTTP_HOST'] );
+
+	// Determine the subdirectory WordPress lives in.
+	$path = '';
+	$doc_root = ! empty( $_SERVER['DOCUMENT_ROOT'] ) ? realpath( $_SERVER['DOCUMENT_ROOT'] ) : false;
+	$wp_root  = realpath( ABSPATH );
+
+	if ( $doc_root && $wp_root && 0 === strpos( $wp_root, $doc_root ) ) {
+		$path = substr( $wp_root, strlen( $doc_root ) );
+	}
+
+	return $scheme . '://' . $host . rtrim( $path, '/' );
+}
 
 /**
-* status
-*/
-class Status
-{
-  public $colour;
-  public $message;
-
-  function __construct($colour, $message = '')
-  {
-    $this->colour = $colour;
-    $this->message = $message;
-  }
-}
-
-$statuses = array();
-
-function AddStatus($colour, $message = '')
-{
-  global $statuses;
-  array_push($statuses, new Status($colour, $message));
-}
-
-//load the wp-config.php, this was stolen from wp-load.php and modified for reporting success/error
-if ( file_exists( ABSPATH . 'wp-config.php') ) {
-  /** The config file resides in ABSPATH */
-  require_once( ABSPATH . 'wp-config.php' );
-  AddStatus('green', 'Loaded the wp-config.php');
-} elseif ( file_exists( dirname(ABSPATH) . '/wp-config.php' ) && ! file_exists( dirname(ABSPATH) . '/wp-settings.php' ) ) {
-  /** The config file resides one level above ABSPATH but is not part of another install*/
-  require_once( dirname(ABSPATH) . '/wp-config.php' );
-  AddStatus('green', 'Loaded the wp-config.php');
-} else {
-  echo "<p class='error'><strong>wp-config.php</strong> failed to load</p>";
-  AddStatus('red', '<strong>wp-config.php</strong> failed to load');
-}
-
-//connect to database using the variables defined in wp-config.php
-mysql_connect(DB_HOST,DB_USER,DB_PASSWORD);
-@mysql_select_db(DB_NAME) or die( "Unable to select database");
-AddStatus('green', 'Database select successful');
-
-//get the variables from the form for search and replace
-$searchanddestroy = array(mysql_real_escape_string($_POST['search']),mysql_real_escape_string($_POST['replace']));
-$defaults=array('search'=>$searchanddestroy[0],'replace'=>$searchanddestroy[1]);
-
-//if there is no search input we find the most likely strings
-if($defaults['search'] == ""){//usually we're replacing the string currently stored in the db as the siteurl (standard for moving a WordPress)
-  //query for tables
-  $query = "SHOW TABLES LIKE '%options'";
-  $result=mysql_query($query);
-  $optionstables=array();
-  while ($row = mysql_fetch_array($result)) {
-    $optionstables[]=$row[0];
-  }
-  $search_table=$optionstables[0];
-  if(count($optionstables)<1){
-    $search_table="wp_options";
-    echo "<p class='error'>There was no options table for WordPress, trying: <strong>".$search_table."</strong></p>";
-    AddStatus('red', "There was no options table for WordPress, trying: <strong>".$search_table."</strong>");
-  }
-  elseif(count($optionstables)>1){
-    echo "<p class='error'>There was more than one prefix for WordPress, using: <strong>".$search_table."</strong></p>";
-    AddStatus('red', "There was more than one prefix for WordPress, using: <strong>".$search_table."</strong>");
-  }else{
-    AddStatus('green', 'Identified the current prefix');
-  }
-
-  $search_q = "SELECT * FROM ".$search_table." WHERE option_name = 'siteurl'";
-  $search_result=mysql_query($search_q);
-  while ($search_row = mysql_fetch_array($search_result)) {
-    $defaults['search'] = $search_row['option_value'];
-  }
-}else{
-  AddStatus('green', 'Identified the current prefix');
-}
-if($defaults['replace'] == ""){//the value we want to replace with should be the current directory on the current domain without a trailing '/'
-  $defaults['replace'] = 'http://' . $_SERVER['HTTP_HOST'] . substr($_SERVER['REQUEST_URI'], 0, strrpos($_SERVER['REQUEST_URI'],'/'));
-}
-
-?>
-
-<form action="fixit.php" method="POST" accept-charset="utf-8" class="form">
-  <div class="row">
-      <div class="title"><label for="search">Search</label></div>
-      <div class="input-wrap"><input type="text" name="search" value="<?php print $defaults['search']; ?>" id="search" size="50"></div>
-  </div>
-  <div class="row">
-      <div class="title"><label for="replace">Replace</label></div>
-      <div class="input-wrap"><input type="text" name="replace" value="<?php print $defaults['replace']; ?>" id="replace" size="50"></div>
-  </div>
-  <input id="submit" type="submit" value="Replace &rarr;">
-</form>
-
-
-<?php
-
-
-global$serialized_count_occurance;
-
-function recursive_array_replace($find, $replace, &$data) {
-global$serialized_count_occurance;
-    if (is_array($data)) {
-        foreach ($data as $key => $value) {
-            if (is_array($value)) {
-                recursive_array_replace($find, $replace, $data[$key]);
-            } else {
-                // have to check if it's string to ensure no switching to string for booleans/numbers/nulls - don't need any nasty conversions
-                if (is_string($value)) {
-                  if (strpos($value,$find) !== false ){
-                    // print '<pre>'.print_r($value,true).'</pre>';
-                    $serialized_count_occurance++;
-                  }
-                  $data[$key] = str_replace($find, $replace, $value);
-                }
-
-            }
-        }
-    } else {
-      if (is_string($value)) {
-        if (strpos($value,$find)){
-          print '<pre>'.print_r($value,true).'</pre>';
-        }
-        $data[$key] = str_replace($find, $replace, $value);
-      }
-    }
-
-}
-//only run replace if the form has been submitted
-if (($_POST['search'] && !$_POST['replace']) || (!$_POST['search'] && $_POST['replace'])) {
-  AddStatus('red', 'Search and replace are both required');
-}
-
-if ($_POST['search'] && $_POST['replace']) :
-  AddStatus('green', 'Found Search and replace');
-
-  //query for tables
-  $query = "SHOW TABLES";
-  $result=mysql_query($query);
-  //save the number of tables
-  $num=mysql_num_rows($result);
-  //make sure the numbers start at 0 instead of NULL
-  $i=0;
-  $u=0;
-  $serialized_count=0;
-  $serialized_count_occurance=0;
-
-
-  while ($row = mysql_fetch_array($result)) {
-    //for each table, show the columns
-    $cq = "show columns from ".$row[0]." where Type like '%char%' or Type like '%text'";
-    $cresult=mysql_query($cq);
-    while ($crow = mysql_fetch_array($cresult)) {
-      //for each column, update the value
-      $rq = "UPDATE ".$row[0]." SET ".$crow[0]." = replace(".$crow[0].", '".$searchanddestroy[0]."', '".$searchanddestroy[1]."') WHERE ".$crow[0]." NOT LIKE '_:%'";
-      $i++;//count the columns
-      $rresult=mysql_query($rq);
-
-      $numr=mysql_affected_rows();
-      $u += $numr >= 0 ? $numr : 0;//count affected rows
-    }
-
-    //for each table, show the columns which are serialized
-    $cq = "SHOW columns FROM ".$row[0]." WHERE (Type LIKE '%char%' OR Type LIKE '%text')";
-    $cresult=mysql_query($cq);
-    while ($crow = mysql_fetch_array($cresult)) {
-      //select the rows that seem to be serialized
-      $serial_q = "SELECT ".$crow[0]." FROM ".$row[0]." WHERE ".$crow[0]." LIKE '_:%' AND ".$crow[0]." LIKE '%".$searchanddestroy[0]."%'";
-      $serial_result=mysql_query($serial_q);
-      while ($serial_row = mysql_fetch_array($serial_result)) {
-        //check if really serialized
-        if(is_serialized( $serial_row[0] )) {
-          $serialized_count++;
-
-          //unserialize -> replace in array -> serialize
-          $new_serial_row = maybe_unserialize($serial_row[0]);
-          recursive_array_replace($searchanddestroy[0], $searchanddestroy[1], $new_serial_row);
-          $new_serial_row = maybe_serialize($new_serial_row);
-
-          //lets update
-          $rq = "UPDATE ".$row[0]." SET ".$crow[0]." = '".$new_serial_row."' WHERE ".$crow[0]." = '".$serial_row[0]."'";
-          $rresult=mysql_query($rq);
-
-          //and count those rows
-          $numr=mysql_affected_rows();
-          $u += $numr >= 0 ? $numr : 0;//count affected rows
-        }
-      }
-      $columns++;//count the columns
-    }
-  }
-
-  if($serialized_count_occurance>0){
-    AddStatus('green', 'Found occurances in serialized data');
-  }else{
-    AddStatus('red', 'No occurances found in serialized data');
-  }
-  if($u<1){
-    AddStatus('red', 'No rows updated');
-  }else{
-    AddStatus('green', $u . ' rows updated');
-  }
-  //print info about the replace
-  ?>
-  <table border='0' cellspacing='5' cellpadding='5' id='results'>
-    <tr>
-      <td class='title'>Tables found:</td>
-      <td class='number'><?php print $num; ?></td>
-    </tr>
-    <tr>
-      <td class='title'>Columns found:</td>
-      <td class='number'><?php print $i; ?></td>
-    </tr>
-    <tr>
-      <td class='title'>Serialized rows fixed:</td>
-      <td class='number'><?php print $serialized_count; ?></td>
-    </tr>
-    <tr>
-      <td class='title'>Serialized occurances:</td>
-      <td class='number'><?php print $serialized_count_occurance; ?></td>
-    </tr>
-    <tr>
-      <td class='title'>Updated rows:</td>
-      <td class='number'><?php print $u; ?></td>
-    </tr>
-  </table>
-  <?php
-
-  mysql_close();
-
-
-endif;
-
-//status lights so we know everything is okay
-echo "<ul class='status'>";
-foreach($statuses as $index=>$status){
-  echo "<li><span class='lamp ".$status->colour."'><span>" . ($index+1) . "</span></span><span>" . $status->message . "</span></li>";
-}
-echo "</ul>";
-
-?>
-
-  <div id="footer">
-    &copy; 2011-2017 by Tamm Sjödin |
-  <?php
-  $mtime = explode(" ", microtime()); $endtime = $mtime[1] + $mtime[0]; $totaltime = ($endtime - $starttime);
-  //print the time taken to execute the script
-  echo 'Executed in ' .round($totaltime, 2). ' seconds.';
-  ?>
-  </div>
+ * Render a self-contained HTML page (used by migration intercept,
+ * which runs before themes are available).
+ */
+function fixit_standalone_page( $title, $body ) {
+	header( 'Content-Type: text/html; charset=utf-8' );
+	?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title><?php echo esc_html( $title ); ?></title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen,Ubuntu,sans-serif;
+     background:#f0f0f1;color:#1d2327;line-height:1.6;padding:40px 20px}
+.wrap{max-width:640px;margin:0 auto;background:#fff;border-radius:8px;
+      box-shadow:0 1px 3px rgba(0,0,0,.08);padding:32px 40px}
+h1{font-size:22px;margin-bottom:4px}
+h2{font-size:18px;margin:1.2em 0 0.5em}
+h3{font-size:15px;margin:1.2em 0 0.5em}
+code{background:#f0f0f1;padding:2px 6px;border-radius:3px;font-size:0.9em}
+p{margin:0.6em 0}
+.brand{color:#2271b1;font-size:13px;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+	<div class="brand">Fixit</div>
+	<h1><?php echo $title; ?></h1>
+	<?php echo $body; ?>
 </div>
 </body>
 </html>
+	<?php
+}
